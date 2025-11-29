@@ -1,0 +1,7 @@
+git+https://github.com/About-to-break/toolbox.git@logs
+git+https://github.com/About-to-break/toolbox.git@rabbitmq
+git+https://github.com/About-to-break/toolbox.git@minio
+
+dotenv
+openai
+pillow
