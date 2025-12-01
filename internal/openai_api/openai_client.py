@@ -1,17 +1,18 @@
 from io import BytesIO
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from PIL import Image, UnidentifiedImageError
 import base64
 from openai import OpenAI
-import prompts
+from internal.openai_api import prompts
 import logging
 
-class OpenAiClient:
+
+class BaseOpenAIClient:
     def __init__(
-        self,
-        logger: logging.Logger,
-        base_url: str,
-        api_key: Optional[str] = None,
+            self,
+            logger: logging.Logger,
+            base_url: str,
+            api_key: Optional[str] = None,
     ):
         self.logger = logger
         self.api_key = api_key or "EMPTY"
@@ -22,6 +23,9 @@ class OpenAiClient:
             max_retries=2,
         )
 
+
+class OpenAiVlClient(BaseOpenAIClient):
+
     @staticmethod
     def b64_convert_image(image_b: bytes, mime_type: str = "jpeg") -> str:
         """Convert image bytes to a base64 data URL."""
@@ -30,22 +34,29 @@ class OpenAiClient:
 
     @staticmethod
     def _compress_image(
-        image_b: bytes,
-        compression_max_size: int = 1024,
-        format: str = "JPEG",
-        quality: int = 85,
-    ) -> tuple[bytes, str]:
+            image_b: bytes,
+            compression_max_size: int = 1024,
+            format: str = "JPEG",
+            quality: int = 85,
+    ) -> tuple[bytes, str, float]:
         """
         Compress an image to fit within the given maximum dimension.
-        Returns the compressed image bytes and the corresponding MIME type.
+        Returns:
+            compressed_bytes,
+            mime_type,
+            k (compression ratio based on dimension reduction)
         """
         try:
             img = Image.open(BytesIO(image_b))
         except UnidentifiedImageError as e:
             raise ValueError("Failed to identify image file: corrupted or unsupported format.") from e
 
+        # Original size (for ratio)
+        orig_w, orig_h = img.size
+        orig_max_dim = max(orig_w, orig_h)
+
+        # Normalize modes if saving JPEG
         if img.mode in ("RGBA", "LA", "P") and format.upper() == "JPEG":
-            # JPEG does not support transparency — flatten to RGB with white background
             background = Image.new("RGB", img.size, (255, 255, 255))
             if img.mode == "P":
                 img = img.convert("RGBA")
@@ -54,7 +65,14 @@ class OpenAiClient:
         elif img.mode != "RGB":
             img = img.convert("RGB")
 
+        # Resize
         img.thumbnail((compression_max_size, compression_max_size), Image.LANCZOS)
+
+        new_w, new_h = img.size
+        new_max_dim = max(new_w, new_h)
+
+        # compression ratio: new / old
+        k = new_max_dim / orig_max_dim
 
         buffer = BytesIO()
         save_format = "JPEG"
@@ -67,19 +85,19 @@ class OpenAiClient:
         else:
             img.save(buffer, format=save_format, quality=quality, optimize=True)
 
-        return buffer.getvalue(), mime_type
+        return buffer.getvalue(), mime_type, k
 
-    def _generate_vl_message(
+    def _generate_img_message(
         self,
         image_b: bytes,
         compression_max_size: int = 1024,
         custom_prompt: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ):
         """
         Generate a multimodal message for a vision-language model.
         """
         try:
-            compressed_bytes, mime_type = self._compress_image(
+            compressed_bytes, mime_type, k = self._compress_image(
                 image_b, compression_max_size=compression_max_size
             )
         except ValueError as e:
@@ -91,9 +109,9 @@ class OpenAiClient:
             b64_img_str=b64_str,
             custom_prompt=custom_prompt,
         )
-        return message
+        return message, k
 
-    def vl_request(
+    def img_request(
         self,
         image_b: bytes,
         model: str,
@@ -101,7 +119,7 @@ class OpenAiClient:
         temperature: float = 0.1,
         custom_prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
-    ) -> Optional[str]:
+    ):
         """
         Send a vision-language request to the model (e.g., Qwen-VL).
         Returns the model's textual response or None on failure.
@@ -111,7 +129,7 @@ class OpenAiClient:
             return None
 
         try:
-            messages = self._generate_vl_message(
+            messages, k = self._generate_img_message(
                 image_b=image_b,
                 compression_max_size=compression_max_size,
                 custom_prompt=custom_prompt,
@@ -129,15 +147,17 @@ class OpenAiClient:
 
             if not response.choices:
                 self.logger.warning("Received empty response from model (no choices returned).")
-                return None
+                return None, None
 
             content = response.choices[0].message.content
             if content is None:
                 self.logger.warning("Model returned a message with null content.")
-                return None
+                return None, None
 
-            return content.strip()
+            return content.strip(), k
 
         except Exception as e:
             self.logger.error(f"VL request failed: {e}", exc_info=True)
-            return None
+            return None, None
+
+
