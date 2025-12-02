@@ -10,10 +10,12 @@ class MainPipeline:
                  logger: logging.Logger,
                  minio_client: MinioClient,
                  openai_url: str,
+                 model: str,
                  openai_api_key: str = None,
                  ):
         self.logger = logger
         self.logger.info("Initializing main service pipeline...")
+        self.model = model
         self.minio_client = minio_client
         self.openai_client = OpenAiVlClient(
             logger=self.logger,
@@ -27,7 +29,7 @@ class MainPipeline:
         parsed_text = ast.literal_eval(text)
         return parsed_text
 
-    def run(self, body: bytes, model: str):
+    def run(self, body: bytes):
         try:
             parsed_body = self._decode_body(body)
             file_path, uuid = parsed_body.values()
@@ -37,16 +39,18 @@ class MainPipeline:
             image = self.minio_client.download_file(file_path)
             if image is None:
                 raise Exception("Failed to download image")
+            else:
+                self.logger.debug(f"Image successfully downloaded from minio")
 
             response, compression_k = self.openai_client.img_request(
                 image_b=image,
-                model=model,
+                model=self.model,
             )
 
             if response is None and compression_k is None:
                 raise Exception("Failed to get LLM answer")
 
-            self.logger.debug(f"Decoded body with response {response}")
+            self.logger.debug(f"Decoded LLM api response {response}")
 
         except Exception as e:
             self.logger.error(f"Pipeline exception: {e}")

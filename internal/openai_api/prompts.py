@@ -11,9 +11,9 @@ def image_message(b64_img_str: str, custom_prompt=None) -> list:
             "role": "user",
             "content": [
                 {
-                    "type": "input_image",
-                    "image_url": f"data:image/png;base64,{b64_img_str}",
-                    "detail": "high",
+                    "type": "image_url",
+                    "image_url": {"url": b64_img_str},
+
                 },
                 {
                     "type": "text",

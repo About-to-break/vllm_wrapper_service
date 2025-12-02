@@ -143,6 +143,7 @@ class OpenAiVlClient(BaseOpenAIClient):
             if max_tokens is not None:
                 request_kwargs["max_tokens"] = max_tokens
 
+            self.logger.debug("Requesting api...")
             response = self.client.chat.completions.create(**request_kwargs)
 
             if not response.choices:
@@ -158,6 +159,6 @@ class OpenAiVlClient(BaseOpenAIClient):
 
         except Exception as e:
             self.logger.error(f"VL request failed: {e}", exc_info=True)
-            return None, None
+            raise
 
 
