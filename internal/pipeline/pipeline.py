@@ -23,6 +23,7 @@ class MainPipeline:
             base_url=openai_url
         )
         self.logger.info("Main service pipeline initialized successfully.")
+
     @staticmethod
     def _decode_body(body: bytes) -> dict:
         text = body.decode("utf-8")
@@ -51,14 +52,13 @@ class MainPipeline:
                 raise Exception("Failed to get LLM answer")
 
             self.logger.debug(f"Decoded LLM api response {response}")
+            self.logger.debug(f"K was {compression_k}")
+
+            # TODO: перессылка в rabbit
 
         except Exception as e:
             self.logger.error(f"Pipeline exception: {e}")
 
 
-    def test_run(self, body: bytes):
-        self.logger.warning(f"Decoded body with body {body}")
-
-
-
-
+    def _evaluate_json_response_structure(self, response: dict):
+        pass
