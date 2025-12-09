@@ -6,3 +6,4 @@ dotenv
 openai
 pillow
 numpy
+ultralytics
