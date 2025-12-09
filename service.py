@@ -26,9 +26,10 @@ def serve():
 
     pipe = pipeline.MainPipeline(
         logger=logger,
-        openai_url=config.OPENAI_VLLM_API_URL,
+        roi_device=config.ULTRA_DEVICE,
         minio_client=file_client,
-        model="Qwen/Qwen3-VL-4B-Instruct-FP8"
+        model=config.ULTRA_MODEL_PATH,
+        roi_target_class=config.ULTRA_TARGET_CLASS,
     )
 
     consumer = RabbitConsumer(
@@ -52,3 +53,6 @@ def serve():
     logger.info("Init server DONE")
 
     consumer.consume(pipe.run)
+
+if __name__ == '__main__':
+    serve()

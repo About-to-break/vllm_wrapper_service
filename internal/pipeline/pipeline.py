@@ -2,25 +2,26 @@ import logging
 import ast
 
 from minio_tools import MinioClient
-from internal.openai_api.openai_client import OpenAiVlClient
+from internal.roi_processor import roi
 
 
 class MainPipeline:
     def __init__(self,
                  logger: logging.Logger,
                  minio_client: MinioClient,
-                 openai_url: str,
+                 roi_device: str,
                  model: str,
-                 openai_api_key: str = None,
+                 roi_target_class: str,
                  ):
         self.logger = logger
         self.logger.info("Initializing main service pipeline...")
         self.model = model
         self.minio_client = minio_client
-        self.openai_client = OpenAiVlClient(
+        self.roi = roi.ROI(
             logger=self.logger,
-            api_key=openai_api_key,
-            base_url=openai_url
+            model=self.model,
+            device=roi_device,
+            target_class=roi_target_class,
         )
         self.logger.info("Main service pipeline initialized successfully.")
 
@@ -43,22 +44,14 @@ class MainPipeline:
             else:
                 self.logger.debug(f"Image successfully downloaded from minio")
 
-            response, compression_k = self.openai_client.img_request(
-                image_b=image,
-                model=self.model,
-            )
+            response = self.roi.get_rois(image_b=image)
 
-            if response is None and compression_k is None:
-                raise Exception("Failed to get LLM answer")
+            if response is None:
+                raise Exception("Failed to get ROI detected bboxes")
 
-            self.logger.debug(f"Decoded LLM api response {response}")
-            self.logger.debug(f"K was {compression_k}")
+            self.logger.debug(f"Acquired clean ROI bboxes response: {response}")
 
             # TODO: перессылка в rabbit
 
         except Exception as e:
             self.logger.error(f"Pipeline exception: {e}")
-
-
-    def _evaluate_json_response_structure(self, response: dict):
-        pass
